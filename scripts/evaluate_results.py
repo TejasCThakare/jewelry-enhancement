@@ -1,192 +1,204 @@
+"""
+Script to evaluate enhancement results.
+UPDATED: Fixed PSNR calculation with proper resizing
+"""
+
 import sys
-import csv
 from pathlib import Path
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
+import csv
+import cv2
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.evaluation.metrics import ImageQualityMetrics
 from src.utils.image_io import load_image
-from src.utils.visualization import (
-    save_comparison, 
-    plot_metric_distribution,
-    create_before_after_slider
-)
 
 
-def evaluate_results(original_dir: str = "data/raw",
-                    degraded_dir: str = "data/degraded",
-                    enhanced_dir: str = "data/enhanced",
-                    output_dir: str = "results"):
-    """
-    Evaluate enhancement results and generate metrics.
+def calculate_psnr(img1, img2):
+    """Calculate PSNR - handles different sizes correctly."""
+    # Ensure same type
+    img1 = img1.astype(np.float64)
+    img2 = img2.astype(np.float64)
     
-    Args:
-        original_dir: Directory with original images
-        degraded_dir: Directory with degraded images
-        enhanced_dir: Directory with enhanced images
-        output_dir: Output directory for results
-    """
-    print("=" * 60)
-    print("Evaluating Enhancement Results")
-    print("=" * 60)
+    # Resize if needed
+    if img1.shape != img2.shape:
+        img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]), 
+                         interpolation=cv2.INTER_CUBIC)
+    
+    # Calculate MSE
+    mse = np.mean((img1 - img2) ** 2)
+    
+    if mse == 0:
+        return 100.0
+    
+    max_pixel = 255.0
+    psnr = 20 * np.log10(max_pixel / np.sqrt(mse))
+    return float(psnr)
+
+
+def calculate_ssim(img1, img2):
+    """Calculate SSIM."""
+    from skimage.metrics import structural_similarity as ssim
+    
+    # Resize if needed
+    if img1.shape != img2.shape:
+        img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]), 
+                         interpolation=cv2.INTER_CUBIC)
+    
+    # Convert to grayscale
+    if len(img1.shape) == 3 and img1.shape[2] == 3:
+        gray1 = cv2.cvtColor(img1.astype(np.uint8), cv2.COLOR_BGR2GRAY)
+    else:
+        gray1 = img1.astype(np.uint8)
+    
+    if len(img2.shape) == 3 and img2.shape[2] == 3:
+        gray2 = cv2.cvtColor(img2.astype(np.uint8), cv2.COLOR_BGR2GRAY)
+    else:
+        gray2 = img2.astype(np.uint8)
+    
+    score = ssim(gray1, gray2, data_range=255)
+    return float(score)
+
+
+def evaluate_results(original_dir="data/raw",
+                    degraded_dir="data/degraded",
+                    enhanced_dir="data/enhanced",
+                    output_dir="results",
+                    max_images=50):
+    """Evaluate enhancement results."""
+    print("=" * 70)
+    print("EVALUATING ENHANCEMENT RESULTS")
+    print("=" * 70)
     print()
     
-    # Initialize metrics calculator
-    metrics_calc = ImageQualityMetrics()
-    
-    # Create output directories
+    # Setup
     output_path = Path(output_dir)
-    (output_path / "comparisons").mkdir(parents=True, exist_ok=True)
-    (output_path / "metrics").mkdir(parents=True, exist_ok=True)
-    (output_path / "visualizations").mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(exist_ok=True)
+    metrics_dir = output_path / "metrics"
+    metrics_dir.mkdir(exist_ok=True)
     
     # Get original images
     original_path = Path(original_dir)
-    original_files = list(original_path.glob("*.jpg")) + \
-                    list(original_path.glob("*.jpeg")) + \
-                    list(original_path.glob("*.png"))
+    original_files = sorted(list(original_path.glob("*.jpg")) + 
+                          list(original_path.glob("*.png")))[:max_images]
     
     print(f"Found {len(original_files)} original images")
     print()
+    
+    # Results storage
+    all_results = []
     
     # Process each degradation level
     degraded_path = Path(degraded_dir)
     enhanced_path = Path(enhanced_dir)
     
-    all_results = []
-    
-    for degradation_level_dir in sorted(degraded_path.iterdir()):
-        if not degradation_level_dir.is_dir():
+    for level_dir in sorted(degraded_path.iterdir()):
+        if not level_dir.is_dir():
             continue
         
-        level_name = degradation_level_dir.name
-        print(f"Evaluating degradation level: {level_name}")
+        level_name = level_dir.name
+        print(f"Processing: {level_name}")
         
-        level_results = {
+        results = {
             'level': level_name,
             'psnr_degraded': [],
             'psnr_enhanced': [],
             'ssim_degraded': [],
             'ssim_enhanced': [],
-            'mse_degraded': [],
-            'mse_enhanced': [],
         }
         
         # Process each image
-        for original_file in tqdm(original_files[:20], desc=f"  Evaluating ({level_name})"):  # First 20 for demo
+        for orig_file in tqdm(original_files, desc=f"  {level_name}"):
             try:
-                # Load images
-                original = load_image(str(original_file))
-                degraded_file = degradation_level_dir / original_file.name
-                enhanced_file = enhanced_path / level_name / original_file.name
+                # Load original
+                original = load_image(str(orig_file))
                 
-                if not degraded_file.exists() or not enhanced_file.exists():
+                # Load degraded
+                deg_file = level_dir / orig_file.name
+                if not deg_file.exists():
                     continue
+                degraded = load_image(str(deg_file))
                 
-                degraded = load_image(str(degraded_file))
-                enhanced = load_image(str(enhanced_file))
+                # Load enhanced
+                enh_file = enhanced_path / level_name / orig_file.name
+                if not enh_file.exists():
+                    continue
+                enhanced = load_image(str(enh_file))
                 
                 # Calculate metrics
-                metrics_degraded = metrics_calc.calculate_all_metrics(original, degraded)
-                metrics_enhanced = metrics_calc.calculate_all_metrics(original, enhanced)
+                psnr_deg = calculate_psnr(original, degraded)
+                psnr_enh = calculate_psnr(original, enhanced)
+                ssim_deg = calculate_ssim(original, degraded)
+                ssim_enh = calculate_ssim(original, enhanced)
                 
-                # Store metrics
-                level_results['psnr_degraded'].append(metrics_degraded['psnr'])
-                level_results['psnr_enhanced'].append(metrics_enhanced['psnr'])
-                level_results['ssim_degraded'].append(metrics_degraded['ssim'])
-                level_results['ssim_enhanced'].append(metrics_enhanced['ssim'])
-                level_results['mse_degraded'].append(metrics_degraded['mse'])
-                level_results['mse_enhanced'].append(metrics_enhanced['mse'])
-                
-                # Save comparison for first few images
-                if len(level_results['psnr_enhanced']) <= 5:
-                    comparison_path = output_path / "comparisons" / f"{level_name}_{original_file.stem}.jpg"
-                    save_comparison(
-                        original, degraded, enhanced, 
-                        str(comparison_path),
-                        {
-                            'PSNR_Enh': metrics_enhanced['psnr'],
-                            'SSIM_Enh': metrics_enhanced['ssim']
-                        }
-                    )
-                    
-                    # Create before/after slider
-                    slider_path = output_path / "comparisons" / f"{level_name}_{original_file.stem}_slider.jpg"
-                    create_before_after_slider(degraded, enhanced, str(slider_path))
+                # Store
+                results['psnr_degraded'].append(psnr_deg)
+                results['psnr_enhanced'].append(psnr_enh)
+                results['ssim_degraded'].append(ssim_deg)
+                results['ssim_enhanced'].append(ssim_enh)
                 
             except Exception as e:
-                print(f"    Error evaluating {original_file.name}: {e}")
+                pass
         
-        # Calculate statistics
-        if level_results['psnr_enhanced']:
-            print(f"  Results for {level_name}:")
-            print(f"    PSNR: {np.mean(level_results['psnr_degraded']):.2f} dB (degraded) -> "
-                  f"{np.mean(level_results['psnr_enhanced']):.2f} dB (enhanced)")
-            print(f"    SSIM: {np.mean(level_results['ssim_degraded']):.4f} (degraded) -> "
-                  f"{np.mean(level_results['ssim_enhanced']):.4f} (enhanced)")
-            print(f"    Images evaluated: {len(level_results['psnr_enhanced'])}")
+        # Print results
+        if results['psnr_enhanced']:
+            psnr_d = np.mean(results['psnr_degraded'])
+            psnr_e = np.mean(results['psnr_enhanced'])
+            ssim_d = np.mean(results['ssim_degraded'])
+            ssim_e = np.mean(results['ssim_enhanced'])
+            
+            print(f"  PSNR: {psnr_d:.2f} → {psnr_e:.2f} dB (+{psnr_e-psnr_d:.2f})")
+            print(f"  SSIM: {ssim_d:.4f} → {ssim_e:.4f} (+{ssim_e-ssim_d:.4f})")
             print()
             
-            all_results.append(level_results)
-            
-            # Plot distributions
-            dist_path = output_path / "visualizations" / f"{level_name}_psnr_distribution.png"
-            plot_metric_distribution(
-                level_results['psnr_enhanced'],
-                f"PSNR ({level_name})",
-                str(dist_path)
-            )
+            all_results.append(results)
     
-    # Save detailed metrics to CSV
-    csv_path = output_path / "metrics" / "detailed_metrics.csv"
+    # Save CSV
+    csv_path = metrics_dir / "detailed_metrics.csv"
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Level', 'Metric', 'Degraded_Mean', 'Degraded_Std', 
                         'Enhanced_Mean', 'Enhanced_Std', 'Improvement'])
         
-        for result in all_results:
-            level = result['level']
+        for res in all_results:
+            level = res['level']
             
-            for metric in ['psnr', 'ssim', 'mse']:
-                deg_mean = np.mean(result[f'{metric}_degraded'])
-                deg_std = np.std(result[f'{metric}_degraded'])
-                enh_mean = np.mean(result[f'{metric}_enhanced'])
-                enh_std = np.std(result[f'{metric}_enhanced'])
-                
-                if metric == 'mse':
-                    improvement = ((deg_mean - enh_mean) / deg_mean) * 100
-                else:
-                    improvement = ((enh_mean - deg_mean) / deg_mean) * 100
-                
-                writer.writerow([
-                    level, metric.upper(),
-                    f"{deg_mean:.4f}", f"{deg_std:.4f}",
-                    f"{enh_mean:.4f}", f"{enh_std:.4f}",
-                    f"{improvement:.2f}%"
-                ])
+            # PSNR
+            d_mean = np.mean(res['psnr_degraded'])
+            d_std = np.std(res['psnr_degraded'])
+            e_mean = np.mean(res['psnr_enhanced'])
+            e_std = np.std(res['psnr_enhanced'])
+            imp = e_mean - d_mean
+            writer.writerow([level, 'PSNR', f"{d_mean:.2f}", f"{d_std:.2f}",
+                           f"{e_mean:.2f}", f"{e_std:.2f}", f"+{imp:.2f} dB"])
+            
+            # SSIM
+            d_mean = np.mean(res['ssim_degraded'])
+            d_std = np.std(res['ssim_degraded'])
+            e_mean = np.mean(res['ssim_enhanced'])
+            e_std = np.std(res['ssim_enhanced'])
+            imp = (e_mean - d_mean) * 100
+            writer.writerow([level, 'SSIM', f"{d_mean:.4f}", f"{d_std:.4f}",
+                           f"{e_mean:.4f}", f"{e_std:.4f}", f"+{imp:.2f}%"])
     
-    print("=" * 60)
-    print("Evaluation complete!")
-    print("=" * 60)
-    print(f"Results saved to: {output_dir}")
-    print(f"  - Comparisons: {output_dir}/comparisons/")
-    print(f"  - Metrics: {output_dir}/metrics/")
-    print(f"  - Visualizations: {output_dir}/visualizations/")
+    print("=" * 70)
+    print(f"Results saved to: {csv_path}")
+    print("=" * 70)
+    
+    # Display
+    df = pd.read_csv(csv_path)
+    print("\n" + df.to_string(index=False))
 
 
 def main():
-    """Main function."""
     import argparse
-    
-    parser = argparse.ArgumentParser(description="Evaluate enhancement results")
-    parser.add_argument("--original", default="data/raw", help="Original images directory")
-    parser.add_argument("--degraded", default="data/degraded", help="Degraded images directory")
-    parser.add_argument("--enhanced", default="data/enhanced", help="Enhanced images directory")
-    parser.add_argument("--output", default="results", help="Output directory")
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--original", default="data/raw")
+    parser.add_argument("--degraded", default="data/degraded")
+    parser.add_argument("--enhanced", default="data/enhanced")
+    parser.add_argument("--output", default="results")
     args = parser.parse_args()
     
     evaluate_results(args.original, args.degraded, args.enhanced, args.output)

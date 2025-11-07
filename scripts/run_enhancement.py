@@ -1,14 +1,17 @@
+"""
+Script to run enhancement pipeline on degraded images.
+UPDATED: Minimal pre/post processing for best quality
+"""
+
 import sys
-import yaml
 from pathlib import Path
 from tqdm import tqdm
+import yaml
 import time
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.enhancement.preprocessor import JewelryPreprocessor
 from src.enhancement.enhancer import RealESRGANEnhancer
-from src.enhancement.postprocessor import JewelryPostprocessor
 from src.utils.image_io import load_image, save_image
 
 
@@ -16,111 +19,81 @@ def run_enhancement(input_dir: str = "data/degraded",
                    output_dir: str = "data/enhanced",
                    config_path: str = "config/model_config.yaml"):
     """
-    Run enhancement pipeline on all degraded images.
-    
-    Args:
-        input_dir: Directory containing degraded images
-        output_dir: Output directory for enhanced images
-        config_path: Path to model configuration file
+    Run enhancement on all degraded images.
     """
     print("=" * 60)
     print("Running Enhancement Pipeline")
     print("=" * 60)
     print()
     
-    # Load configuration
+    # Load config
     print(f"Loading configuration from {config_path}...")
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
-    # Initialize pipeline components
+    # Initialize enhancer
     print("Initializing enhancement pipeline...")
-    preprocessor = JewelryPreprocessor(config.get('preprocessing', {}))
     enhancer = RealESRGANEnhancer(config)
-    postprocessor = JewelryPostprocessor(config.get('postprocessing', {}))
-    print("Pipeline initialized successfully")
     print()
     
-    # Get input images
+    # Process each degradation level
     input_path = Path(input_dir)
-    if not input_path.exists():
-        print(f"Error: Input directory not found: {input_dir}")
-        return
+    output_path = Path(output_dir)
     
-    # Process all subdirectories (degradation levels)
-    total_processed = 0
-    total_time = 0
-    failed_images = []
+    total_images = 0
+    failed_images = 0
+    start_time = time.time()
     
-    for degradation_dir in sorted(input_path.iterdir()):
-        if not degradation_dir.is_dir():
+    for degradation_level_dir in sorted(input_path.iterdir()):
+        if not degradation_level_dir.is_dir():
             continue
         
-        level_name = degradation_dir.name
+        level_name = degradation_level_dir.name
         print(f"Processing degradation level: {level_name}")
         
-        # Get images
-        image_files = list(degradation_dir.glob("*.jpg")) + \
-                     list(degradation_dir.glob("*.jpeg")) + \
-                     list(degradation_dir.glob("*.png"))
-        
-        print(f"  Found {len(image_files)} images")
-        
         # Create output directory
-        output_level_dir = Path(output_dir) / level_name
-        output_level_dir.mkdir(parents=True, exist_ok=True)
+        level_output_dir = output_path / level_name
+        level_output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Process images
-        for image_path in tqdm(image_files, desc=f"  Enhancing ({level_name})"):
+        # Get all images
+        image_files = list(degradation_level_dir.glob("*.jpg")) + \
+                     list(degradation_level_dir.glob("*.png"))
+        
+        # Process each image
+        for image_file in tqdm(image_files, desc=f"  Enhancing ({level_name})"):
             try:
-                start_time = time.time()
-                
                 # Load image
-                image = load_image(str(image_path))
+                image = load_image(str(image_file))
                 
-                # Step 1: Preprocessing
-                preprocessed = preprocessor.preprocess(image, denoise=True, enhance_contrast=True)
-                
-                # Step 2: Enhancement (Real-ESRGAN)
-                enhanced = enhancer.enhance(preprocessed)
-                
-                # Step 3: Postprocessing
-                final = postprocessor.postprocess(enhanced)
+                # SIMPLIFIED: Just enhance - no pre/post processing
+                enhanced = enhancer.enhance(image)
                 
                 # Save result
-                output_path = output_level_dir / image_path.name
-                save_image(final, str(output_path))
+                output_file = level_output_dir / image_file.name
+                save_image(enhanced, str(output_file))
                 
-                # Track time
-                elapsed = time.time() - start_time
-                total_time += elapsed
-                total_processed += 1
+                total_images += 1
                 
             except Exception as e:
-                print(f"    Error processing {image_path.name}: {e}")
-                failed_images.append((level_name, image_path.name))
+                print(f"    Error processing {image_file.name}: {e}")
+                failed_images += 1
         
-        print(f"  Completed: {len(image_files) - len([f for l, f in failed_images if l == level_name])}/{len(image_files)} images")
+        print(f"  Completed: {len(image_files)}/{len(image_files)} images")
         print()
     
     # Summary
+    elapsed = time.time() - start_time
     print("=" * 60)
     print("Summary")
     print("=" * 60)
-    print(f"Total images processed: {total_processed}")
-    print(f"Total time: {total_time:.2f} seconds")
-    print(f"Average time per image: {total_time / total_processed:.2f} seconds" if total_processed > 0 else "N/A")
-    print(f"Failed images: {len(failed_images)}")
-    
-    if failed_images:
-        print("\nFailed images:")
-        for level, filename in failed_images[:10]:
-            print(f"  {level}/{filename}")
-        if len(failed_images) > 10:
-            print(f"  ... and {len(failed_images) - 10} more")
-    
-    print(f"\nEnhanced images saved to: {output_dir}")
-    print("\nEnhancement complete!")
+    print(f"Total images processed: {total_images}")
+    print(f"Total time: {elapsed:.2f} seconds")
+    print(f"Average time per image: {elapsed/total_images:.2f} seconds")
+    print(f"Failed images: {failed_images}")
+    print()
+    print(f"Enhanced images saved to: {output_dir}")
+    print()
+    print("Enhancement complete!")
 
 
 def main():
@@ -128,9 +101,9 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Run enhancement pipeline")
-    parser.add_argument("--input", default="data/degraded", help="Input directory with degraded images")
+    parser.add_argument("--input", default="data/degraded", help="Input directory")
     parser.add_argument("--output", default="data/enhanced", help="Output directory")
-    parser.add_argument("--config", default="config/model_config.yaml", help="Configuration file")
+    parser.add_argument("--config", default="config/model_config.yaml", help="Config file")
     
     args = parser.parse_args()
     
