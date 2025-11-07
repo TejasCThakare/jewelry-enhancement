@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Optional
 import urllib.request
 import os
+import sys
+import torchvision.transforms.functional as F
+sys.modules['torchvision.transforms.functional_tensor'] = F
 
 
 class RealESRGANEnhancer:
