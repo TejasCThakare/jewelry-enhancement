@@ -1,0 +1,99 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Data directories
+data/raw/*
+!data/raw/.gitkeep
+data/degraded/*
+!data/degraded/.gitkeep
+data/enhanced/*
+!data/enhanced/.gitkeep
+data/temp/*
+
+# Results
+results/comparisons/*
+!results/comparisons/.gitkeep
+results/metrics/*
+!results/metrics/.gitkeep
+results/visualizations/*
+!results/visualizations/.gitkeep
+
+# Model weights
+weights/*.pth
+weights/*.pt
+!weights/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment variables
+.env
+.env.local
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Kaggle
+kaggle.json
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
