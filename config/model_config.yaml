@@ -1,0 +1,62 @@
+model:
+  name: "RealESRGAN"
+  architecture: "RRDBNet"
+  scale: 4
+  weights:
+    url: "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
+    path: "weights/RealESRGAN_x4plus.pth"
+    auto_download: true
+  
+  inference:
+    tile_size: 400
+    tile_pad: 10
+    pre_pad: 0
+    half_precision: true
+    device: "cuda"  # Options: "cuda", "cpu", "auto"
+    batch_size: 1
+
+preprocessing:
+  denoise:
+    method: "fastNlMeans"
+    h: 10
+    hColor: 10
+    templateWindowSize: 7
+    searchWindowSize: 21
+  
+  contrast:
+    method: "CLAHE"
+    clipLimit: 3.0
+    tileGridSize: [8, 8]
+  
+  sharpen:
+    enabled: false
+    kernel_size: 3
+    sigma: 1.0
+
+postprocessing:
+  metallic_enhancement:
+    enabled: true
+    saturation_boost: 15
+    brightness_boost: 5
+  
+  background_cleanup:
+    enabled: true
+    method: "bilateral"
+    d: 9
+    sigmaColor: 75
+    sigmaSpace: 75
+  
+  final_sharpen:
+    enabled: true
+    amount: 0.3
+
+evaluation:
+  metrics:
+    - "psnr"
+    - "ssim"
+    - "lpips"
+  
+  output:
+    save_comparison: true
+    save_metrics_csv: true
+    create_visualizations: true
