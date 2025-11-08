@@ -6,7 +6,7 @@ This script:
 2. Generates I_HQ (Real-ESRGAN on raw)
 3. Loads degraded images (level1)
 4. Generates I_R (Real-ESRGAN on degraded)
-5. Saves (I_R, I_HQ) pairs for training
+5. Saves NORMALIZED (I_R, I_HQ) pairs for training
 
 Usage:
     python scripts/generate_training_data.py --max-images 490
@@ -99,9 +99,14 @@ def generate_training_data(
             # 4. Generate I_R (input - restored from degraded)
             I_R = enhancer.enhance(I_deg)
             
-            # 5. Save as .npy files
-            np.save(output_path / f'{idx:04d}_input.npy', I_R)
-            np.save(output_path / f'{idx:04d}_target.npy', I_HQ)
+            # ===== CRITICAL FIX: NORMALIZE TO [-1, 1] =====
+            # Convert from [0, 255] to [-1, 1]
+            I_R_normalized = (I_R.astype(np.float32) / 127.5) - 1.0
+            I_HQ_normalized = (I_HQ.astype(np.float32) / 127.5) - 1.0
+            
+            # 5. Save NORMALIZED data as .npy files
+            np.save(output_path / f'{idx:04d}_input.npy', I_R_normalized)
+            np.save(output_path / f'{idx:04d}_target.npy', I_HQ_normalized)
             
             success_count += 1
             
@@ -118,6 +123,21 @@ def generate_training_data(
     print(f"Failed:                 {failed_count} pairs")
     print(f"Output directory:       {output_dir}")
     print()
+    
+    # Verify normalization
+    if success_count > 0:
+        sample_input = np.load(output_path / '0000_input.npy')
+        sample_target = np.load(output_path / '0000_target.npy')
+        print("Data verification:")
+        print(f"  Input range:  [{sample_input.min():.2f}, {sample_input.max():.2f}]")
+        print(f"  Target range: [{sample_target.min():.2f}, {sample_target.max():.2f}]")
+        
+        if sample_input.min() >= -1.1 and sample_input.max() <= 1.1:
+            print("  ✅ Normalization correct!")
+        else:
+            print("  ❌ WARNING: Data not properly normalized!")
+    print()
+    
     print("Next steps:")
     print("  1. Split data: python src/training/dataset_split.py")
     print("  2. Train CNN:  python src/training/train_refinement_gan.py --mode cnn")
