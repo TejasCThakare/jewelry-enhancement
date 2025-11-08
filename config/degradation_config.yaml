@@ -7,11 +7,11 @@ degradation_levels:
       motion_angle: [0, 180]
       apply_probability: 0.9
     noise:
-      gaussian_sigma: [8, 20]
+      gaussian_sigma: [11, 25]
       salt_pepper_amount: [0.00, 0.00]
-      apply_probability: 0.8
+      apply_probability: 0.9
     compression:
-      jpeg_quality: [30, 65]
+      jpeg_quality: [35, 70]
       apply_probability: 0.9
     color_shift:
       temperature_delta: [-8, 8]
