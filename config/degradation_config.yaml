@@ -2,13 +2,13 @@ degradation_levels:
   level1_mild:
     description: "Mild degradation simulating minor quality loss"
     blur:
-      gaussian_sigma: [1.0, 2.0]
+      gaussian_sigma: [4.0, 7.0]
       motion_length: [5, 10]
       motion_angle: [0, 180]
       apply_probability: 0.9
     noise:
       gaussian_sigma: [8, 20]
-      salt_pepper_amount: [0.001, 0.003]
+      salt_pepper_amount: [0.00, 0.00]
       apply_probability: 0.8
     compression:
       jpeg_quality: [30, 65]
