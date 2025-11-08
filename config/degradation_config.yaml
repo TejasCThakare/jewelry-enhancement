@@ -2,23 +2,23 @@ degradation_levels:
   level1_mild:
     description: "Mild degradation simulating minor quality loss"
     blur:
-      gaussian_sigma: [0.5, 1.0]
-      motion_length: [3, 5]
+      gaussian_sigma: [1.0, 2.0]
+      motion_length: [5, 10]
       motion_angle: [0, 180]
-      apply_probability: 0.7
+      apply_probability: 0.9
     noise:
-      gaussian_sigma: [5, 10]
-      salt_pepper_amount: [0, 0]
-      apply_probability: 0.6
+      gaussian_sigma: [8, 20]
+      salt_pepper_amount: [0.001, 0.003]
+      apply_probability: 0.8
     compression:
-      jpeg_quality: [70, 85]
+      jpeg_quality: [30, 65]
       apply_probability: 0.9
     color_shift:
-      temperature_delta: [-10, 10]
-      saturation_delta: [-5, 5]
-      apply_probability: 0.5
+      temperature_delta: [-8, 8]
+      saturation_delta: [-6, 6]
+      apply_probability: 0.3
     downscale:
-      factor: [1.0, 1.0]
+      factor: [0.9, 0.9]
       method: "bicubic"
   
   # level2_moderate:
@@ -69,4 +69,4 @@ pipeline:
   seed: 42
   preserve_aspect_ratio: true
   output_format: "jpg"
-  output_quality: 95
+  output_quality: 90
