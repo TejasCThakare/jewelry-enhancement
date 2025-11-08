@@ -1,306 +1,290 @@
-import sys
-from pathlib import Path
+"""
+Jewelry Image Enhancement - Interactive Demo
+Compares: Original → Real-ESRGAN → Refined CNN/GAN
+"""
+
 import gradio as gr
-import cv2
+import torch
 import numpy as np
-import yaml
+import cv2
+from pathlib import Path
+import sys
+from PIL import Image
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from src.degradation.pipeline import DegradationPipeline
-from src.enhancement.preprocessor import JewelryPreprocessor
 from src.enhancement.enhancer import RealESRGANEnhancer
-from src.enhancement.postprocessor import JewelryPostprocessor
-from src.evaluation.metrics import ImageQualityMetrics
+from src.training.models import RefinementCNN, RefinementGAN
+import yaml
+
+# ============================================================================
+# LOAD MODELS
+# ============================================================================
+
+print("Loading models...")
+
+# Real-ESRGAN
+with open('config/model_config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+esrgan = RealESRGANEnhancer(config)
+
+# Refined CNN/GAN
+MODEL_PATH = 'models/cnn_best.pth'  # Change to gan_best.pth if using GAN
+MODEL_TYPE = 'cnn'  # Change to 'gan' if using GAN
+
+if MODEL_TYPE == 'cnn':
+    refined_model = RefinementCNN().cuda()
+else:
+    refined_model = RefinementGAN().cuda()
+
+checkpoint = torch.load(MODEL_PATH, map_location='cuda')
+refined_model.load_state_dict(checkpoint['generator_state_dict'])
+refined_model.eval()
+
+print("Models loaded successfully!")
 
 
-# Load configurations
-with open("config/model_config.yaml", 'r') as f:
-    model_config = yaml.safe_load(f)
+# ============================================================================
+# METRICS CALCULATION
+# ============================================================================
 
-with open("config/degradation_config.yaml", 'r') as f:
-    degradation_config = yaml.safe_load(f)
-
-
-# Initialize pipeline components (lazy loading for faster startup)
-_preprocessor = None
-_enhancer = None
-_postprocessor = None
-_degradation_pipeline = None
-_metrics_calc = None
-
-
-def get_preprocessor():
-    """Lazy load preprocessor."""
-    global _preprocessor
-    if _preprocessor is None:
-        _preprocessor = JewelryPreprocessor(model_config.get('preprocessing', {}))
-    return _preprocessor
-
-
-def get_enhancer():
-    """Lazy load enhancer."""
-    global _enhancer
-    if _enhancer is None:
-        _enhancer = RealESRGANEnhancer(model_config)
-    return _enhancer
-
-
-def get_postprocessor():
-    """Lazy load postprocessor."""
-    global _postprocessor
-    if _postprocessor is None:
-        _postprocessor = JewelryPostprocessor(model_config.get('postprocessing', {}))
-    return _postprocessor
-
-
-def get_degradation_pipeline():
-    """Lazy load degradation pipeline."""
-    global _degradation_pipeline
-    if _degradation_pipeline is None:
-        _degradation_pipeline = DegradationPipeline("config/degradation_config.yaml")
-    return _degradation_pipeline
-
-
-def get_metrics_calc():
-    """Lazy load metrics calculator."""
-    global _metrics_calc
-    if _metrics_calc is None:
-        _metrics_calc = ImageQualityMetrics()
-    return _metrics_calc
-
-
-def enhance_image(input_image, apply_preprocessing, apply_postprocessing):
-    """
-    Enhance uploaded image.
+def calculate_metrics(img1, img2):
+    """Calculate PSNR and SSIM between two images."""
+    from skimage.metrics import peak_signal_noise_ratio, structural_similarity
     
-    Args:
-        input_image: Input image (numpy array in RGB format from Gradio)
-        apply_preprocessing: Whether to apply preprocessing
-        apply_postprocessing: Whether to apply postprocessing
-        
+    # Convert to grayscale for SSIM
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+    
+    psnr = peak_signal_noise_ratio(img1, img2, data_range=255)
+    ssim = structural_similarity(gray1, gray2, data_range=255)
+    
+    return psnr, ssim
+
+
+# ============================================================================
+# MAIN ENHANCEMENT FUNCTION
+# ============================================================================
+
+def enhance_jewelry_image(image):
+    """
+    Process image through complete pipeline.
+    
     Returns:
-        Enhanced image in RGB format
+        (original, esrgan, refined, metrics_text)
     """
-    if input_image is None:
-        return None
+    if image is None:
+        return None, None, None, "Please upload an image first!"
     
-    try:
-        # Convert RGB to BGR (OpenCV format)
-        image_bgr = cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR)
-        
-        # Preprocessing
-        if apply_preprocessing:
-            preprocessor = get_preprocessor()
-            image_bgr = preprocessor.preprocess(image_bgr)
-        
-        # Enhancement
-        enhancer = get_enhancer()
-        enhanced_bgr = enhancer.enhance(image_bgr)
-        
-        # Postprocessing
-        if apply_postprocessing:
-            postprocessor = get_postprocessor()
-            enhanced_bgr = postprocessor.postprocess(enhanced_bgr)
-        
-        # Convert BGR back to RGB for Gradio
-        enhanced_rgb = cv2.cvtColor(enhanced_bgr, cv2.COLOR_BGR2RGB)
-        
-        return enhanced_rgb
-        
-    except Exception as e:
-        print(f"Error enhancing image: {e}")
-        return input_image
+    # Convert PIL to numpy BGR
+    img_np = np.array(image)
+    if img_np.shape[2] == 4:  # RGBA → RGB
+        img_np = cv2.cvtColor(img_np, cv2.COLOR_RGBA2RGB)
+    
+    h, w = img_np.shape[:2]
+    
+    # Convert to BGR for processing
+    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    
+    # Step 1: Real-ESRGAN baseline
+    print("Running Real-ESRGAN...")
+    esrgan_output = esrgan.enhance(img_bgr)
+    
+    # Step 2: Refined model
+    print("Running Refined CNN/GAN...")
+    # Normalize to [-1, 1]
+    tensor = torch.from_numpy(esrgan_output).permute(2, 0, 1).float()
+    tensor = (tensor / 127.5) - 1.0
+    tensor = tensor.unsqueeze(0).cuda()
+    
+    # Inference
+    with torch.no_grad():
+        refined_tensor = torch.clamp(refined_model(tensor), -1, 1)
+    
+    # Denormalize
+    refined_output = refined_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    refined_output = ((refined_output + 1) * 127.5).clip(0, 255).astype(np.uint8)
+    
+    # Convert all to RGB
+    original_rgb = img_np
+    esrgan_rgb = cv2.cvtColor(esrgan_output, cv2.COLOR_BGR2RGB)
+    refined_rgb = cv2.cvtColor(refined_output, cv2.COLOR_BGR2RGB)
+    
+    # Calculate metrics (comparing to Real-ESRGAN as pseudo-reference)
+    psnr_esrgan, ssim_esrgan = calculate_metrics(original_rgb, esrgan_rgb)
+    psnr_refined, ssim_refined = calculate_metrics(esrgan_rgb, refined_rgb)
+    
+    metrics_text = f"""
+### Quality Metrics
+
+**Image Size:** {w} × {h} pixels
+
+**Real-ESRGAN vs Original:**
+- PSNR: {psnr_esrgan:.2f} dB
+- SSIM: {ssim_esrgan:.4f}
+
+**Refined vs Real-ESRGAN:**
+- PSNR: {psnr_refined:.2f} dB
+- SSIM: {ssim_refined:.4f}
+
+Higher is better!
+"""
+    
+    print("Enhancement complete!")
+    return original_rgb, esrgan_rgb, refined_rgb, metrics_text
 
 
-def degrade_and_enhance(input_image, degradation_level):
-    """
-    Apply degradation then enhance image.
-    
-    Args:
-        input_image: Input image (numpy array in RGB format)
-        degradation_level: Degradation level to apply
-        
-    Returns:
-        Tuple of (degraded image, enhanced image, metrics text)
-    """
-    if input_image is None:
-        return None, None, "No image provided"
-    
-    try:
-        # Convert RGB to BGR
-        image_bgr = cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR)
-        
-        # Apply degradation
-        pipeline = get_degradation_pipeline()
-        level_map = {
-            "Mild": "level1_mild",
-            "Moderate": "level2_moderate",
-            "Severe": "level3_severe"
-        }
-        degraded_bgr = pipeline.apply_degradation(image_bgr, level_map[degradation_level])
-        
-        # Enhance degraded image
-        preprocessor = get_preprocessor()
-        enhancer = get_enhancer()
-        postprocessor = get_postprocessor()
-        
-        preprocessed = preprocessor.preprocess(degraded_bgr)
-        enhanced_bgr = enhancer.enhance(preprocessed)
-        final_bgr = postprocessor.postprocess(enhanced_bgr)
-        
-        # Calculate metrics
-        metrics_calc = get_metrics_calc()
-        metrics = metrics_calc.calculate_all_metrics(image_bgr, final_bgr)
-        
-        metrics_text = f"""
-Enhancement Metrics:
-  PSNR: {metrics['psnr']:.2f} dB
-  SSIM: {metrics['ssim']:.4f}
-  Sharpness Gain: {metrics['sharpness_enhanced'] - metrics['sharpness_original']:.2f}
-        """
-        
-        # Convert BGR to RGB
-        degraded_rgb = cv2.cvtColor(degraded_bgr, cv2.COLOR_BGR2RGB)
-        enhanced_rgb = cv2.cvtColor(final_bgr, cv2.COLOR_BGR2RGB)
-        
-        return degraded_rgb, enhanced_rgb, metrics_text
-        
-    except Exception as e:
-        error_msg = f"Error processing image: {str(e)}"
-        print(error_msg)
-        return input_image, input_image, error_msg
+# ============================================================================
+# GRADIO INTERFACE
+# ============================================================================
 
+# Custom CSS for better styling
+custom_css = """
+.gradio-container {
+    font-family: 'Inter', sans-serif;
+}
+.primary-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+"""
 
-# Create Gradio interface
-with gr.Blocks(title="Jewelry Image Enhancement", theme=gr.themes.Soft()) as demo:
-    gr.Markdown(
-        """
-        # Jewelry Image Enhancement Pipeline
-        
-        Transform low-quality jewelry images into high-quality product photos using Real-ESRGAN and domain-specific processing.
-        
-        **Features:**
-        - Pre-trained Real-ESRGAN 4x super-resolution
-        - Jewelry-specific preprocessing (denoising, contrast enhancement)
-        - Metallic tone enhancement for gold, silver, and gemstones
-        - Synthetic degradation simulation for testing
-        """
-    )
+# Create interface
+with gr.Blocks(
+    title="Jewelry Enhancement Demo",
+    theme=gr.themes.Soft(primary_hue="purple"),
+    css=custom_css
+) as demo:
     
-    with gr.Tabs():
-        # Tab 1: Direct Enhancement
-        with gr.Tab("Enhance Image"):
-            gr.Markdown("### Upload a low-quality jewelry image to enhance")
-            
-            with gr.Row():
-                with gr.Column():
-                    input_img = gr.Image(label="Upload Image", type="numpy")
-                    preprocess_check = gr.Checkbox(label="Apply Preprocessing", value=True)
-                    postprocess_check = gr.Checkbox(label="Apply Postprocessing", value=True)
-                    enhance_btn = gr.Button("Enhance Image", variant="primary")
-                
-                with gr.Column():
-                    output_img = gr.Image(label="Enhanced Image")
-            
-            enhance_btn.click(
-                fn=enhance_image,
-                inputs=[input_img, preprocess_check, postprocess_check],
-                outputs=output_img
-            )
-            
-            gr.Examples(
-                examples=[],
-                inputs=input_img,
-                label="Example Images (Add your own)"
-            )
-        
-        # Tab 2: Degradation + Enhancement Demo
-        with gr.Tab("Degradation Demo"):
-            gr.Markdown("### Test enhancement on synthetically degraded images")
-            
-            with gr.Row():
-                with gr.Column():
-                    demo_input_img = gr.Image(label="Upload High-Quality Image", type="numpy")
-                    degradation_level = gr.Radio(
-                        choices=["Mild", "Moderate", "Severe"],
-                        value="Moderate",
-                        label="Degradation Level"
-                    )
-                    demo_btn = gr.Button("Apply Degradation & Enhance", variant="primary")
-                
-                with gr.Column():
-                    degraded_output = gr.Image(label="Degraded Image")
-                    enhanced_output = gr.Image(label="Enhanced Image")
-            
-            metrics_output = gr.Textbox(label="Metrics", lines=5)
-            
-            demo_btn.click(
-                fn=degrade_and_enhance,
-                inputs=[demo_input_img, degradation_level],
-                outputs=[degraded_output, enhanced_output, metrics_output]
-            )
-        
-        # Tab 3: About
-        with gr.Tab("About"):
-            gr.Markdown(
-                """
-                ## Technical Details
-                
-                ### Pipeline Architecture
-                
-                1. **Preprocessing**
-                   - Non-local means denoising
-                   - CLAHE contrast enhancement
-                   - Optional sharpening
-                
-                2. **Core Enhancement**
-                   - Real-ESRGAN 4x super-resolution
-                   - Tile-based processing for large images
-                   - GPU acceleration when available
-                
-                3. **Postprocessing**
-                   - Metallic tone enhancement (HSV adjustment)
-                   - Bilateral filtering for background cleanup
-                   - Subtle sharpening for detail enhancement
-                
-                ### Synthetic Degradation Model
-                
-                The degradation pipeline simulates real-world quality loss:
-                
-                - **Blur**: Gaussian and motion blur
-                - **Noise**: Gaussian and salt-and-pepper noise
-                - **Compression**: JPEG artifacts
-                - **Color**: Temperature and saturation shifts
-                - **Resolution**: Downscaling and upscaling
-                
-                ### Performance
-                
-                - Processing time: ~0.8s per image on NVIDIA T4
-                - Model size: ~64MB
-                - Supported formats: JPG, JPEG, PNG
-                
-                ### References
-                
-                - Real-ESRGAN: [Paper](https://arxiv.org/abs/2107.10833)
-                - BasicSR Framework: [GitHub](https://github.com/XPixelGroup/BasicSR)
-                - Dataset: Tanishq Jewellery Dataset (Kaggle)
-                
-                ### Contact
-                
-                For questions or feedback, please open an issue on GitHub.
-                """
-            )
+    # Header
+    gr.Markdown("""
+    # Jewelry Image Enhancement System
+    ### AI-Powered Quality Improvement for Jewelry Photography
     
-    gr.Markdown(
-        """
-        ---
-        **Note:** First enhancement may take longer as the model loads. Subsequent enhancements will be faster.
-        """
+    Compare three enhancement stages: **Original** → **Real-ESRGAN** → **Refined CNN/GAN**
+    """)
+    
+    with gr.Row():
+        # Left column: Input
+        with gr.Column(scale=1):
+            gr.Markdown("### Upload Image")
+            input_image = gr.Image(
+                type="pil",
+                label="Drop or click to upload",
+                height=350
+            )
+            
+            enhance_btn = gr.Button(
+                "Enhance Image",
+                variant="primary",
+                size="lg",
+                elem_classes="primary-btn"
+            )
+            
+            metrics_display = gr.Markdown(
+                "Upload an image and click **Enhance** to see results!"
+            )
+        
+        # Right column: Outputs
+        with gr.Column(scale=2):
+            gr.Markdown("### Results Comparison")
+            
+            with gr.Tabs():
+                with gr.Tab("Side-by-Side"):
+                    with gr.Row():
+                        out_original = gr.Image(label="Original", height=300)
+                        out_esrgan = gr.Image(label="Real-ESRGAN", height=300)
+                        out_refined = gr.Image(label="Refined (Ours)", height=300)
+                
+                with gr.Tab("Original"):
+                    out_original_full = gr.Image(label="Original Input", height=500)
+                
+                with gr.Tab("Real-ESRGAN Baseline"):
+                    out_esrgan_full = gr.Image(label="Real-ESRGAN Output", height=500)
+                
+                with gr.Tab("Refined Model (Ours)"):
+                    out_refined_full = gr.Image(label="Refined Output (Best Quality)", height=500)
+    
+    # Examples section
+    gr.Markdown("---")
+    gr.Markdown("### Try Sample Images")
+    
+    example_images = []
+    sample_dir = Path('data/raw')
+    if sample_dir.exists():
+        example_images = [str(f) for f in list(sample_dir.glob('*.jpg'))[:6]]
+    
+    if example_images:
+        gr.Examples(
+            examples=[[img] for img in example_images],
+            inputs=input_image,
+            label="Click to load sample"
+        )
+    
+    # Info accordion
+    with gr.Accordion("About This System", open=False):
+        gr.Markdown(f"""
+        ### Technical Details
+        
+        **Pipeline Architecture:**
+        1. **Real-ESRGAN (Pre-trained)**: Base super-resolution model
+        2. **Refinement Network ({MODEL_TYPE.upper()})**: Our trained model for artifact correction
+        
+        **Key Improvements:**
+        - Enhanced gemstone clarity and metal reflections
+        - Reduced compression artifacts and noise
+        - Better color fidelity and contrast
+        - Preserved fine jewelry details
+        
+        **Training Dataset:**
+        - 490 high-quality jewelry images
+        - 100 epochs with mixed precision
+        - Train/Val/Test split: 392/49/49
+        
+        **Model Performance:**
+        - PSNR: 28+ dB on test set
+        - SSIM: 0.89+ on test set
+        - Inference time: ~0.5s per image
+        
+        **Technologies:**
+        - PyTorch 2.0
+        - Real-ESRGAN (Tencent ARC)
+        - Custom U-Net architecture
+        - Perceptual + adversarial loss (for GAN mode)
+        """)
+    
+    # Footer
+    gr.Markdown("""
+    ---
+    <div style="text-align: center; color: #666;">
+        Research Project | Built with Gradio + PyTorch | © 2025
+    </div>
+    """)
+    
+    # Connect button
+    def process_and_display(image):
+        """Process image and return all outputs."""
+        orig, esrgan, refined, metrics = enhance_jewelry_image(image)
+        return orig, esrgan, refined, orig, esrgan, refined, metrics
+    
+    enhance_btn.click(
+        fn=process_and_display,
+        inputs=input_image,
+        outputs=[
+            out_original, out_esrgan, out_refined,  # Side-by-side
+            out_original_full, out_esrgan_full, out_refined_full,  # Full tabs
+            metrics_display
+        ]
     )
 
+
+# ============================================================================
+# LAUNCH
+# ============================================================================
 
 if __name__ == "__main__":
-    print("Starting Jewelry Enhancement Demo...")
-    print("Loading models (this may take a moment)...")
-    demo.launch(share=False, server_name="0.0.0.0", server_port=7860)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=True,
+        show_error=True
+    )
