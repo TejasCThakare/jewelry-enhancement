@@ -132,7 +132,7 @@ class RefinementTrainer:
             self.criterion_G = CombinedGANLoss(
                 adv_weight=config['loss']['adv_weight'],
                 l1_weight=config['loss']['l1_weight'],
-                perc_weight=config['loss']['perc_weight']
+                perc_weight=config['loss']['perc_weight'],
                 device=device
             )
             self.criterion_D = GANLoss()
