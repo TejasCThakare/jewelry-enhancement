@@ -21,49 +21,49 @@ degradation_levels:
       factor: [1.0, 1.0]
       method: "bicubic"
   
-  level2_moderate:
-    description: "Moderate degradation simulating typical low-quality images"
-    blur:
-      gaussian_sigma: [1.0, 2.0]
-      motion_length: [5, 10]
-      motion_angle: [0, 180]
-      apply_probability: 0.8
-    noise:
-      gaussian_sigma: [10, 20]
-      salt_pepper_amount: [0, 0]
-      apply_probability: 0.7
-    compression:
-      jpeg_quality: [40, 70]
-      apply_probability: 1.0
-    color_shift:
-      temperature_delta: [-20, 20]
-      saturation_delta: [-10, 10]
-      apply_probability: 0.6
-    downscale:
-      factor: [0.5, 0.75]
-      method: "bicubic"
+  # level2_moderate:
+  #   description: "Moderate degradation simulating typical low-quality images"
+  #   blur:
+  #     gaussian_sigma: [1.0, 2.0]
+  #     motion_length: [5, 10]
+  #     motion_angle: [0, 180]
+  #     apply_probability: 0.8
+  #   noise:
+  #     gaussian_sigma: [10, 20]
+  #     salt_pepper_amount: [0, 0]
+  #     apply_probability: 0.7
+  #   compression:
+  #     jpeg_quality: [40, 70]
+  #     apply_probability: 1.0
+  #   color_shift:
+  #     temperature_delta: [-20, 20]
+  #     saturation_delta: [-10, 10]
+  #     apply_probability: 0.6
+  #   downscale:
+  #     factor: [0.5, 0.75]
+  #     method: "bicubic"
   
-  level3_severe:
-    description: "Severe degradation simulating heavily degraded images"
-    blur:
-      gaussian_sigma: [2.0, 4.0]
-      motion_length: [10, 20]
-      motion_angle: [0, 180]
-      apply_probability: 0.9
-    noise:
-      gaussian_sigma: [20, 40]
-      salt_pepper_amount: [0, 0]
-      apply_probability: 0.8
-    compression:
-      jpeg_quality: [10, 40]
-      apply_probability: 1.0
-    color_shift:
-      temperature_delta: [-30, 30]
-      saturation_delta: [-15, 15]
-      apply_probability: 0.7
-    downscale:
-      factor: [0.25, 0.5]
-      method: "bicubic"
+  # level3_severe:
+  #   description: "Severe degradation simulating heavily degraded images"
+  #   blur:
+  #     gaussian_sigma: [2.0, 4.0]
+  #     motion_length: [10, 20]
+  #     motion_angle: [0, 180]
+  #     apply_probability: 0.9
+  #   noise:
+  #     gaussian_sigma: [20, 40]
+  #     salt_pepper_amount: [0, 0]
+  #     apply_probability: 0.8
+  #   compression:
+  #     jpeg_quality: [10, 40]
+  #     apply_probability: 1.0
+  #   color_shift:
+  #     temperature_delta: [-30, 30]
+  #     saturation_delta: [-15, 15]
+  #     apply_probability: 0.7
+  #   downscale:
+  #     factor: [0.25, 0.5]
+  #     method: "bicubic"
 
 pipeline:
   seed: 42
