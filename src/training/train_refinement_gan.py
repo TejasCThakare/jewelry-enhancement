@@ -31,12 +31,13 @@ from src.utils.image_io import load_image
 
 
 class JewelryDataset(torch.utils.data.Dataset):
-    """Dataset for loading training pairs."""
+    """Dataset for loading training pairs - FIXED for variable sizes."""
     
-    def __init__(self, data_dir, split='train'):
+    def __init__(self, data_dir, split='train', target_size=512):
         import numpy as np
         
         self.data_dir = Path(data_dir) / split
+        self.target_size = target_size  # Resize all images to this size
         self.files = sorted(list(self.data_dir.glob('*_input.npy')))
         
         if len(self.files) == 0:
@@ -47,6 +48,7 @@ class JewelryDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         import numpy as np
+        import cv2
         
         input_path = self.files[idx]
         target_path = str(input_path).replace('_input.npy', '_target.npy')
@@ -54,6 +56,15 @@ class JewelryDataset(torch.utils.data.Dataset):
         # Load
         input_img = np.load(input_path)
         target_img = np.load(target_path)
+        
+        # CRITICAL FIX: Resize to fixed size
+        if input_img.shape[:2] != (self.target_size, self.target_size):
+            input_img = cv2.resize(input_img, (self.target_size, self.target_size), 
+                                  interpolation=cv2.INTER_CUBIC)
+        
+        if target_img.shape[:2] != (self.target_size, self.target_size):
+            target_img = cv2.resize(target_img, (self.target_size, self.target_size), 
+                                   interpolation=cv2.INTER_CUBIC)
         
         # Normalize to [-1, 1]
         input_img = (input_img / 127.5) - 1.0
@@ -64,6 +75,7 @@ class JewelryDataset(torch.utils.data.Dataset):
         target_tensor = torch.from_numpy(target_img).permute(2, 0, 1).float()
         
         return input_tensor, target_tensor
+
 
 
 class RefinementTrainer:
