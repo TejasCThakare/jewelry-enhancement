@@ -1,6 +1,6 @@
 degradation_levels:
   level1_mild:
-    description: "Clean degradation"
+    description: "Clean degradation - NO color shift"
     blur:
       gaussian_sigma: [0.5, 1.0]
       motion_length: [0, 0]
@@ -14,9 +14,9 @@ degradation_levels:
       jpeg_quality: [70, 85]
       apply_probability: 0.9
     color_shift:
-      temperature_delta: [-5, 5]
-      saturation_delta: [-3, 3]
-      apply_probability: 0.3
+      temperature_delta: [0, 0]
+      saturation_delta: [0, 0]
+      apply_probability: 0.0
     downscale:
       factor: [1.0, 1.0]
       method: "bicubic"
