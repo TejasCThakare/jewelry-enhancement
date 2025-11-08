@@ -3,12 +3,12 @@ degradation_levels:
     description: "Mild degradation simulating minor quality loss"
     blur:
       gaussian_sigma: [0.5, 1.0]
-      motion_length: [3, 5]
-      motion_angle: [0, 180]
+      motion_length: [0, 0]
+      motion_angle: [0, 0]
       apply_probability: 0.7
     noise:
       gaussian_sigma: [5, 10]
-      salt_pepper_amount: [0.001, 0.003]
+      salt_pepper_amount: [0, 0]
       apply_probability: 0.6
     compression:
       jpeg_quality: [70, 85]
@@ -30,7 +30,7 @@ degradation_levels:
       apply_probability: 0.8
     noise:
       gaussian_sigma: [10, 20]
-      salt_pepper_amount: [0.003, 0.007]
+      salt_pepper_amount: [0, 0]
       apply_probability: 0.7
     compression:
       jpeg_quality: [40, 70]
@@ -52,7 +52,7 @@ degradation_levels:
       apply_probability: 0.9
     noise:
       gaussian_sigma: [20, 40]
-      salt_pepper_amount: [0.007, 0.015]
+      salt_pepper_amount: [0, 0]
       apply_probability: 0.8
     compression:
       jpeg_quality: [10, 40]
