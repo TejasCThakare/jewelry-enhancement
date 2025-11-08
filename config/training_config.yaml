@@ -1,0 +1,58 @@
+# Training configuration for jewelry refinement models
+
+# Model architecture
+model:
+  name: "RefinementCNN"  # or "RefinementGAN"
+  features: 64           # Base number of features
+
+# Training hyperparameters
+training:
+  batch_size: 4          # Small for T4 GPU (8GB)
+  epochs: 100            # CNN: 100, GAN: 200
+  lr_g: 0.0001          # Generator learning rate
+  lr_d: 0.0004          # Discriminator learning rate (4x generator)
+  num_workers: 2         # DataLoader workers
+  val_every: 5           # Validate every N epochs
+  save_every: 10         # Save checkpoint every N epochs
+
+# Loss weights
+loss:
+  # CNN mode
+  l1_weight: 1.0
+  mse_weight: 0.5
+  
+  # GAN mode
+  adv_weight: 1.0        # Adversarial loss
+  perc_weight: 10.0      # Perceptual (LPIPS) loss
+
+# Data augmentation
+augmentation:
+  enabled: false         # Disable for small dataset
+  horizontal_flip: 0.5
+  vertical_flip: 0.0
+  rotation: 0
+  brightness: 0.1
+  contrast: 0.1
+
+# Mixed precision training
+mixed_precision: true    # Enable for faster training on T4
+
+# Checkpointing
+checkpoint:
+  save_dir: "models"
+  keep_last_n: 3         # Keep last 3 checkpoints
+
+# Logging
+logging:
+  tensorboard_dir: "results/logs"
+  log_every: 10          # Log every N batches
+
+# Evaluation
+evaluation:
+  metrics:
+    - "PSNR"
+    - "SSIM"
+    - "LPIPS"
+    - "FID"
+  save_comparisons: true
+  num_comparisons: 10
