@@ -112,6 +112,8 @@ class RefinementTrainer:
             lr=config['training']['lr_g'],
             betas=(0.5, 0.999)
         )
+
+        
         
         if mode == 'gan':
             self.optimizer_D = torch.optim.Adam(
@@ -131,6 +133,7 @@ class RefinementTrainer:
                 adv_weight=config['loss']['adv_weight'],
                 l1_weight=config['loss']['l1_weight'],
                 perc_weight=config['loss']['perc_weight']
+                device=device
             )
             self.criterion_D = GANLoss()
         
