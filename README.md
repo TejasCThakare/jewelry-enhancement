@@ -57,12 +57,13 @@ In Above, The first image in the row is the raw image, the second is simulated d
 
 Here, The first image is the raw input, the second image is the enhanced degraded image, the third is our CNN-refined output, and the last one is the raw enhanced image via Real-ESRGAN.  
 Here, the PSNR and SSIM of our CNN-Enhanced output increased by **+0.39 dB** and **+0.001**, respectively, compared to the enhanced degraded image.
- (Note: Some unusually high PSNR/SSIM values seen during experiments were due to dimension mismatches, not real improvement. Qualitative evaluation is more reliable in this setting)
+ > **Note:** The unusually high PSNR (`∞`) and SSIM (`1.0`) observed on the HQ image during experiments are due to dimension mismatches, not actual improvement. For these cases, qualitative evaluation is more reliable. And this pipeline is under improvement. 
 
 ---
 
 ##  Demo Video
 
 [ Watch Demo Video on Google Drive](https://drive.google.com/file/d/1EJZAwSxPXfeIBZhdxAGJJg8JH8RoOS_2/view?usp=sharing)
+
 
 
